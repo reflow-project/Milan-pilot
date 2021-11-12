@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "axios": "^0.22.0",
+    "graphql": "^15.5.1",
+    "graphql-request": "^3.4.0",
+    "node-emoji": "^1.10.0",
+    "nodemon": "^2.0.12",
+    "prompt": "^1.2.0",
+    "telegraf": "^4.4.0"
+  }
+}
