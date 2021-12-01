@@ -7,6 +7,8 @@
 - A **physical device** designed for wholesalers, for quick and easy reporting of surpluses, that can be found [here](https://github.com/reflow-project/Milan-pilot/tree/main/Foody%20Zero%20Waste/physical-device).
 - A **Telegram bot**, written in NodeJS, running in dedicated channels to receive notifications of donations, manage the transfer of goods and keep track of all sorting operations.
 
+![Schermata da 2021-12-01 10-32-32](https://user-images.githubusercontent.com/642555/144258482-510b7210-b017-4a55-ad84-fece1b22cce8.png)
+
 ### Getting started
 
 ## Installation
