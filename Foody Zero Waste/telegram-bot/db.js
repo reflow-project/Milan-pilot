@@ -13,8 +13,8 @@ var db = {
 	],
 
 	groups : [
-	    {name: "RECUP", tg_id: -795134012},
-	    {name: "Donations", tg_id: -682075892},
+	    {name: "IN", tg_id: -795134012},
+	    {name: "OUT", tg_id: -682075892},
 	],
 
 	units : [
@@ -71,7 +71,11 @@ var db = {
 	},
 
 	isAdminFromTGid: function (tg_id) {
-		return this.getUserFromTGid(tg_id)[0].role == 'admin';
+		let u = this.getUserFromTGid(tg_id);
+		if (u.length > 0)
+			return u[0].role == 'admin';
+		else
+			return false
 	}
 }
 

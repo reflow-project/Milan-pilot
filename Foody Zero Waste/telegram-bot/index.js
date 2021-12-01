@@ -39,7 +39,7 @@ function sleep(ms) {
 
 const donationWizard = new Scenes.WizardScene('donation-wizard', async (ctx) => {
     await sleep(Math.floor(Math.random() * 500));
-    ctx.reply('Che prodotto ti è stato donato?');
+    ctx.replyWithMarkdown('*Donazione*\nChe prodotto ti è stato donato?');
     ctx.wizard.state.donation = {};
     return ctx.wizard.next();
   },
@@ -101,7 +101,7 @@ const donationWizard = new Scenes.WizardScene('donation-wizard', async (ctx) => 
 );
 
 const sortingWizard = new Scenes.WizardScene('sorting-wizard', (ctx) => {
-    ctx.reply('Quale prodotto hai smistato?');
+    ctx.replyWithMarkdown('*Selezione*\nQuale prodotto hai smistato?');
 
     // TODO - GraphQL Get inventory (?)
 
@@ -144,6 +144,11 @@ const sortingWizard = new Scenes.WizardScene('sorting-wizard', (ctx) => {
       return;         
     }
 
+    if (parseFloat(ctx.message.text) <= 0){
+      ctx.reply('Il peso finale non può essere negativo.');
+      return;         
+    }
+
     ctx.wizard.state.sorting.end_quantity = parseFloat(ctx.message.text);
 
     await sleep(Math.floor(Math.random() * 500));
@@ -167,8 +172,6 @@ const sortingWizard = new Scenes.WizardScene('sorting-wizard', (ctx) => {
     
     if (curSorting.notes.length > 0)
         message += '\nNote: ' + curSorting.notes
-
-    
 
     ctx.replyWithMarkdown(message,
         Markup.inlineKeyboard([
@@ -203,7 +206,8 @@ const offerWizard = new Scenes.WizardScene('offer-wizard', async (ctx) => {
         console.log(res)
 
         ctx.replyWithMarkdown(message).then(() =>
-            ctx.reply('Grazie, donazione inviata!'));
+            ctx.reply('Grazie, donazione inviata!').then(async () =>
+             {await sleep(2000); startMenu(ctx)}));
         
         curSorting = {}
 
@@ -235,10 +239,10 @@ const offerWizard = new Scenes.WizardScene('offer-wizard', async (ctx) => {
         })
 
         if (btns.length == 0) {
-            ctx.reply('Tutte i prodotti sono stati già offerti! 🎉')        
+            ctx.reply('Tutti i prodotti sono stati già offerti! 🎉')        
         } else {
             btns.push([Markup.button.callback('Annulla', `startMenu`)])
-            ctx.reply('Quale prodotto vuoi ridistribuire?', Markup.inlineKeyboard(btns));
+            ctx.replyWithMarkdown('*Ridistribuzione*\nQuale prodotto vuoi ridistribuire?', Markup.inlineKeyboard(btns));
         }
         return ctx.scene.leave();
     }
@@ -274,7 +278,7 @@ const transferWizard = new Scenes.WizardScene('transfer-wizard', async (ctx) => 
         ctx.reply('Tutte le donazioni sono state ritirate! 🎉')        
     } else {
         btns.push([Markup.button.callback('Annulla', `startMenu`)])
-        ctx.reply('Quale delle seguenti donazioni è stata ritirata?', Markup.inlineKeyboard(btns));
+        ctx.replyWithMarkdown('*Ritiro*\nQuale delle seguenti donazioni è stata ritirata?', Markup.inlineKeyboard(btns));
     }
     return ctx.scene.leave();
 });
@@ -338,8 +342,6 @@ bot.action('recordSorting', async (ctx) => {
                 Markup.button.callback('👎 No', `startMenu`)
             ]))
         });
-
-    curSorting = {}
     }
 })
 
@@ -513,9 +515,14 @@ async function parseOffers(ctx, data) {
             if (x.resourceInventoriedAs) {
                 var res = x.resourceInventoriedAs
 
-                message += '\nSono disponibili per il ritiro ' + res.onhandQuantity.hasNumericalValue
-                message += ' ' + res.onhandQuantity.hasUnit.symbol
-                message += ' di ' + res.name +'.'
+                if (res.onhandQuantity.hasNumericalValue > 0) {
+
+                    message += '\nSono disponibili per il ritiro ' + res.onhandQuantity.hasNumericalValue
+                    message += ' ' + res.onhandQuantity.hasUnit.symbol
+                    message += ' di ' + res.name +'.'
+                } else {
+                    continue;
+                }
             } else {
                 continue;
             }
@@ -528,8 +535,8 @@ async function parseOffers(ctx, data) {
             let qty = res.onhandQuantity.hasNumericalValue
             await ctx.replyWithMarkdown(message,
                 Markup.inlineKeyboard([
-                Markup.button.callback('☝️ ' + qty*0.5, `acceptOffer ${x.id}-${qty*0.5}`),
-                Markup.button.callback('✌️ ' + qty*0.75, `acceptOffer ${x.id}-${qty*0.75}`),
+                Markup.button.callback('☝️ ' + Math.floor(qty*0.5), `acceptOffer ${x.id}-${Math.floor(qty*0.5)}`),
+                Markup.button.callback('✌️ ' + Math.floor(qty*0.75), `acceptOffer ${x.id}-${Math.floor(qty*0.75)}`),
                 Markup.button.callback('🤘 ' + qty, `acceptOffer ${x.id}-${qty}`),
             ]))
         } else {
@@ -573,7 +580,7 @@ bot.action(/recordOffer (.+)/, async (ctx, next) => {
 
     console.log(res)
 
-    return ctx.reply('Grazie, donazione inviata!');
+    return ctx.reply('Grazie, donazione inviata!').then(async () => {await sleep(2000); startMenu(ctx)});
 })
 
 bot.action(/acceptDonation (.+)/, (ctx, next) => {
@@ -669,8 +676,9 @@ bot.on('callback_query', function(ctx){
 
 function getDonations(ctx) {
 
-    // GraphQL - request all new Intents made for a specific Agent    
-    client.request(queries.getIntents, {receiver_id: db.getRECUP()[0].reflow_id}).then((res) => {
+    // GraphQL - request all new Intents made for a specific Agent
+    // TODO : update with DateTime filter
+    client.request(queries.getIntents, {receiver_id: db.getRECUP()[0].reflow_id, num: 500}).then((res) => {
     
         console.log("> Current donations #" + res.intents.length)
 
@@ -692,7 +700,8 @@ function getDonations(ctx) {
 function getOffers(ctx) {
 
     // GraphQL - request all new Intents made for a specific Agent
-    client.request(queries.getIntents, {receiver_id: db.getCRI()[0].reflow_id}).then((res) => {
+    // TODO : update with DateTime filter
+    client.request(queries.getIntents, {receiver_id: db.getCRI()[0].reflow_id, num: 500}).then((res) => {
 
         console.log("> Current offers #" + res.intents.length)
 
@@ -733,13 +742,13 @@ function startMenu(ctx) {
 
 function startNotifications(ctx, group_name) {
     
-    ctx.replyWithMarkdown('🍌 *RECUP Test Bot avviato!*\nRiceverai aggiornamenti sulle donazioni ogni ' + config.bot.polling_time/1000 + ' secondi.')
+    ctx.replyWithMarkdown('🍌 *BOTTO avviato!*\nRiceverai aggiornamenti sulle donazioni ogni ' + config.bot.polling_time/1000 + ' secondi.')
 
-    if (group_name == "RECUP") {
+    if (group_name == "IN") {
 
         si_donations = setInterval(() => { getDonations(ctx) } , config.bot.polling_time)
     
-    } else if (group_name == "Donations") {
+    } else if (group_name == "OUT") {
 
         si_offers = setInterval(() => { getOffers(ctx) }, config.bot.polling_time)
     }
@@ -757,17 +766,14 @@ bot.command('start', ctx => {
     // check if sender is admin
     if (db.isAdminFromTGid(ctx.from.id)){
 
-        if (ctx.chat.id == db.getGroupFromName('RECUP')[0].tg_id) {
+        console.log(ctx.chat.id)
+        if (ctx.chat.id == db.getGroupFromName('IN')[0].tg_id) {
         
-            startNotifications(ctx, "RECUP")
+            startNotifications(ctx, "IN")
         
-        } else if (ctx.chat.id == db.getGroupFromName('Donations')[0].tg_id) {
+        } else if (ctx.chat.id == db.getGroupFromName('OUT')[0].tg_id) {
         
-            startNotifications(ctx, "Donations")
-        } else {
-            
-            startNotifications(ctx, "RECUP")
-
+            startNotifications(ctx, "OUT")
         }
     }
 })
@@ -776,16 +782,16 @@ bot.command('stop', ctx => {
     // check if sender is admin
     if (db.isAdminFromTGid(ctx.from.id)){
 
-        if (ctx.chat.id == db.getGroupFromName('RECUP')[0].tg_id) {
+        if (ctx.chat.id == db.getGroupFromName('IN')[0].tg_id) {
         
             clearInterval(si_donations);
 
-        } else if (ctx.chat.id == db.getGroupFromName('Donations')[0].tg_id) {
+        } else if (ctx.chat.id == db.getGroupFromName('OUT')[0].tg_id) {
         
             clearInterval(si_offers);
         }
 
-        ctx.replyWithMarkdown('🍌 *RECUP Test Bot spento!*\nBye bye 👋')
+        ctx.replyWithMarkdown('🍌 *BOTTO spento!*\nBye bye 👋')
     }
 })
 
@@ -795,7 +801,7 @@ bot.on("inline_query", async ctx => {
 
 /* Listen and handle channel posts */
 bot.on('text', ctx => {
-    
+
     if (ctx.message.text.includes(ctx.me) && db.isAdminFromTGid(ctx.from.id)) {
     
         startMenu(ctx)
@@ -805,7 +811,7 @@ bot.on('text', ctx => {
 
 bot.launch()
 
-console.log("Hello, I am the 🍌 RECUP Test Bot!")
+console.log("Hello, I am 🍌 BOTTO the Bot!")
 createSession()
 
 /* Enable graceful stop */
