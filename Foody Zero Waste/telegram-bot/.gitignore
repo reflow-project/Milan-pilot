@@ -129,3 +129,4 @@ dist
 .svelte-kit
 
 secrets.js
+package-lock.json
