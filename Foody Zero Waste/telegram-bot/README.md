@@ -7,8 +7,6 @@
 - A **physical device** designed for wholesalers, for quick and easy reporting of surpluses, that can be found [here](https://github.com/reflow-project/Milan-pilot/tree/main/Foody%20Zero%20Waste/physical-device).
 - A **Telegram bot**, written in NodeJS, running in dedicated channels to receive notifications of donations, manage the transfer of goods and keep track of all sorting operations.
 
-### Getting started
-
 ## Installation
 
 The quickest way to start using the bot, is to download the code with
@@ -47,5 +45,5 @@ The configuration step requires some operations both on the Telegram bot and Ref
 3. Send to `@BotFather` the commands `/setjoingroups` and `/setprivacy` to enable **Allow groups** and disable **Privacy mode** settings of your bot.
 4. Edit the `db.js` file and replace the `tg_id` of the `IN` and `OUT` groups with the related telegram group ids.
 
-### Acknowledge
+## Acknowledge
 Foody Zero Waste is part of a project that has received funding from the European Union's Horizon 2020 research and innovation programme under grant agreement number 820937.
