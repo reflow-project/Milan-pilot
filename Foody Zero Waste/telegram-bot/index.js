@@ -10,8 +10,9 @@ const bot = new Telegraf(secrets.bot.token)
 var si_donations;
 var si_offers;
 
-// object to handle offers timeouts
+// object to handle offers timeouts and reminders
 var timeouts = {}
+var reminders = {}
 // object to handle current donation
 var curDonation = {}
 // object to handle current sorted resource
@@ -370,6 +371,8 @@ function stopDonationTimer(donationID) {
     // stop timer for this donation
     clearTimeout(timeouts[donationID])
     delete timeouts[donationID]
+    clearInterval(reminders[donationID])
+    delete reminders[donationID]
     console.log("> Cancel timer "+ donationID)
 }
 
@@ -380,6 +383,10 @@ function autoRefuseDonation(msg, donationID){
 
     bot.telegram.editMessageText(msg.chat.id, msg.message_id, undefined, new_msg, {parse_mode: 'Markdown'})    
     refuseDonation(donationID)
+}
+
+function sendReminder(msg){
+    bot.telegram.sendMessage(msg.chat.id, "⌛ Ricorda di rispondere all'offerta prima della scadenza!", {reply_to_message_id : msg.message_id})
 }
 
 function refuseDonation(donationID) {
@@ -487,7 +494,7 @@ async function parseDonations(ctx, data) {
             if (x.note)
                 message += '\n- Stato: ' + x.note
 
-            message += "\n\n⚠️ Ricordati di rispondere entro *30 minuti*."
+            message += "\n\n⚠️ Ricordati di rispondere entro *" + config.bot.donation_timeout/60000+ " minuti*."
 
             message += "\n\nAccetti la donazione?"
             await ctx.replyWithMarkdown(message,
@@ -497,6 +504,8 @@ async function parseDonations(ctx, data) {
             ])).then((msg) => {
                 console.log("> Set new timer "+ x.id)
                 timeouts[x.id] = setTimeout(autoRefuseDonation, config.bot.donation_timeout, msg, x.id);
+                console.log(msg)
+                reminders[x.id] = setInterval(sendReminder, config.bot.reminder_timeout, msg);
             })
         } else {
             continue
@@ -535,6 +544,7 @@ async function parseOffers(ctx, data) {
             let qty = res.onhandQuantity.hasNumericalValue
             await ctx.replyWithMarkdown(message,
                 Markup.inlineKeyboard([
+                Markup.button.callback('🤏 ' + Math.floor(qty*0.25), `acceptOffer ${x.id}-${Math.floor(qty*0.25)}`),
                 Markup.button.callback('☝️ ' + Math.floor(qty*0.5), `acceptOffer ${x.id}-${Math.floor(qty*0.5)}`),
                 Markup.button.callback('✌️ ' + Math.floor(qty*0.75), `acceptOffer ${x.id}-${Math.floor(qty*0.75)}`),
                 Markup.button.callback('🤘 ' + qty, `acceptOffer ${x.id}-${qty}`),
