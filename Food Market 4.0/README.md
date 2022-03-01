@@ -1,2 +1,2 @@
 # Milan-pilot
-Repository for the models and software developed for the Milan pilot
+Repository for website (production) developed for the Milan pilot
