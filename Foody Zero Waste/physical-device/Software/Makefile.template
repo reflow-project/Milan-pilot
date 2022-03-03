@@ -1,0 +1,13 @@
+port = /dev/cu.usbserial-14310
+baudrate = 115200
+
+deploy: compile flash monitor
+
+compile:
+	arduino-cli compile --fqbn esp32:esp32:esp32s2 .
+
+flash:
+	arduino-cli upload -p $(port) --fqbn esp32:esp32:esp32s2 .
+
+monitor:
+	screen $(port) $(baudrate)

@@ -1,0 +1,6 @@
+String ssid = "network-ssid";
+String pass = "netword-password";
+
+const char* graphqlHost = "graphql-host";
+const char* graphqlPath = "graphql-path";
+const int graphqlPort = 4000;

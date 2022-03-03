@@ -1,0 +1,8 @@
+// Wifi credentials
+String wifiSSID = "";
+String wifiPass = "";
+
+// GraphQL and ReflowOS credentials
+String graphqlServer = "";
+String graphqlUser = "";
+String graphqlPass = "";

@@ -1,0 +1,9 @@
+#include "src/printInfo/printInfo.h"
+
+const Info info {
+  { InfoFields::name, ""},
+  { InfoFields::version, ""},
+  { InfoFields::author, ""},
+  { InfoFields::license, ""},
+  { InfoFields::website, ""}
+};

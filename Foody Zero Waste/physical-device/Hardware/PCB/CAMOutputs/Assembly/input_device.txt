@@ -1,0 +1,18 @@
+Partlist exported from G:/Shared drives/02_OPENDOT/03_PROGETTI/PROGETTI IN CORSO/REFLOW/04. PROGETTO/05. PROTOTIPAZIONE/DEVICE + BOT/Engineering SCATOLOTTO/PCB/input_device/input_device.sch at 23/12/2021 16:36
+
+Qty Value                                         Device                                              Package                           Parts              Description C1   MF MPN OC_FARNELL OC_NEWARK R1
+1                                                 PIN-HEADER-03X1THRU-254                             MA03-1                            ENCODER            PIN HEADER              unknown    unknown     
+1                                                 PIN-HEADER-04X01                                    MA04-1                            SV1                PIN HEADER              unknown    unknown     
+1                                                 PIN-HEADER-06X1                                     MA06-1                            U$6                                                               
+1                                                 PIN-HEADER-07X1                                     MA07-1                            U$7                                                               
+1   100u                                          CAPACITOR-POLARIZEDCAP-DIAM-6.5MM-H11.3MM-BENT-FLIP CAP-DIAM-6.5MM-H-11.3MM-BENT-FLIP U$14                           100u                               
+1   1k                                            RESISTOR                                            RESISTOR-THRU-1/4                 R                                                               1k
+1   CAPACITOR-POLARIZEDCAP-DIAM-8.3MM-H-12MM-BENT CAPACITOR-POLARIZEDCAP-DIAM-8.3MM-H-12MM-BENT       CAP-DIAM-8.3MM-H-12MM-BENT        U$13                                                              
+1   DIODE                                         DIODE                                               DIODE                             U$8                                                               
+1   ESP32-S2-SAOLA-1                              ESP32-S2-SAOLA-1                                    ESP32-S2-SAOLA-1                  U$3                                                               
+1   MOSFET-N-IRL540NPBFBENDED-SHORTEST            MOSFET-N-IRL540NPBFBENDED-SHORTEST                  TO220AH-SHORTEST-BEND             U$12                                                              
+3   PIN-HEADER-02X1GROUND                         PIN-HEADER-02X1GROUND                               02X1-PAD-2.54PITCH-MASK-NAME      RST, SPEAKER, U$10                                                
+1   POWER-JACK                                    POWER-JACK                                          JACK-5.5X2.1-THRU                 U$2                                                               
+3   RESISTOR                                      RESISTOR                                            RESISTOR-THRU-1/4                 U$1, U$4, U$5                                                     
+1   SN74LVC245A                                   SN74LVC245A                                         LEVELCONVERTER-SN74LVC245AN-DIP   U$11                                                              
+1   TRIMMER                                       TRIMMER                                             TRIMMER-PLASTIC-BLUE-9MM-2,54     U$9                                                               
