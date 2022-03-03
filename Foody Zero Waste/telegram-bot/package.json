@@ -1,11 +1,14 @@
 {
   "dependencies": {
     "axios": "^0.22.0",
+    "base64-img": "^1.0.4",
     "graphql": "^15.5.1",
     "graphql-request": "^3.4.0",
+    "handlebars": "^4.7.7",
     "node-emoji": "^1.10.0",
     "nodemon": "^2.0.12",
     "prompt": "^1.2.0",
+    "puppeteer": "^13.0.0",
     "telegraf": "^4.4.0"
   }
 }

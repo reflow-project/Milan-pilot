@@ -1,5 +1,11 @@
 const { GraphQLClient } = require('graphql-request')
 const { Markup, Scenes, session, Telegraf } = require('telegraf')
+const fs = require("fs");
+const path = require("path");
+const puppeteer = require('puppeteer');
+const handlebars = require("handlebars")
+const base64Img = require('base64-img');
+
 const config = require('./config')
 const db = require('./db')
 const secrets = require('./secrets')
@@ -8,8 +14,7 @@ const queries = require('./queries')
 const bot = new Telegraf(secrets.bot.token)
 
 var si_donations;
-var si_offers;
-
+var DEBUG = false
 // object to handle offers timeouts and reminders
 var timeouts = {}
 var reminders = {}
@@ -17,15 +22,97 @@ var reminders = {}
 var curDonation = {}
 // object to handle current sorted resource
 var curSorting = {}
+// object to handle current transfered resource
+var curTransfer = {}
 // keep track of current donation number
-var numDonation = 0
-// keep track of current offer number
-var numOffer = 0
+var lastDonationTS = 0
 
 const client = new GraphQLClient(config.reflow.api_url)
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+async function request(query, vars) {
+    try {
+        const data = await client.request(query, vars);
+        return data;
+    } catch (e) {
+        
+        console.log(e)
+        if('response' in e) {  // Use GQL error if we got a response.
+            let error = e.response.errors[0]
+            if (error.code === 'needs_login') {  // Special case of expired session
+                await createSession()
+                const data = await client.request(query, vars);
+                return data;
+            } else {
+                throw(error)  // Or throw GraphQL error with meaningful error
+            }
+        }
+        else {  // No GQL response, could be network error.
+            throw(e)
+        }
+    }
+}
+
+async function generateDoc(uid, res, d) {
+
+    if (d === undefined)
+        var date = new Date()
+    else
+        var date = new Date(d)
+
+    var options = { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' }
+    
+    
+    res['date'] = date.toLocaleDateString("it-IT", options)
+
+    var u = db.getUserFromRFid(uid)
+    console.log(u)
+
+    if (u.length > 0){
+        if (u[0].name.includes('Opera')){
+            res['receiver'] = 0
+            res['img_r_src'] = base64Img.base64Sync('./CRI_Opera_mark.png');
+        } else {
+            res['receiver'] = 1
+            res['img_r_src'] = base64Img.base64Sync('./CRI_SD_mark.png');
+        }
+    }
+    
+    var templateHtml = fs.readFileSync(path.join(process.cwd(), 'template.html'), 'utf8');
+    var template = handlebars.compile(templateHtml);
+    var finalHtml = template(res);
+
+
+    var fname_date = date.toISOString().substring(0,10)
+    var pdfPath = path.join('pdf', `${uid}-${fname_date}.pdf`);
+    
+    var options = {
+        format: 'A4',
+        headerTemplate: "<p></p>",
+        footerTemplate: "<p></p>",
+        displayHeaderFooter: false,
+        margin: {
+            top: "40px",
+            bottom: "100px"
+        },
+        printBackground: true,
+        path: pdfPath
+    }
+
+    const browser = await puppeteer.launch({
+        args: ['--no-sandbox'],
+        headless: true
+    });
+    const page = await browser.newPage();
+    await page.setContent(finalHtml,{ waitUntil: 
+        ['domcontentloaded', 'load', "networkidle0"] })
+    await page.pdf(options)
+    await browser.close();
+
+    return pdfPath
+}
+
+function now() {
+    return new Date().toISOString()
 }
 
 /* Define all Wizards */
@@ -39,7 +126,6 @@ function sleep(ms) {
 */
 
 const donationWizard = new Scenes.WizardScene('donation-wizard', async (ctx) => {
-    await sleep(Math.floor(Math.random() * 500));
     ctx.replyWithMarkdown('*Donazione*\nChe prodotto ti è stato donato?');
     ctx.wizard.state.donation = {};
     return ctx.wizard.next();
@@ -50,7 +136,6 @@ const donationWizard = new Scenes.WizardScene('donation-wizard', async (ctx) => 
       return; 
     }
     ctx.wizard.state.donation.name = ctx.message.text;
-    await sleep(Math.floor(Math.random() * 500));
     ctx.reply('Quanti colli sono stati donati?');
     return ctx.wizard.next();
   },
@@ -60,28 +145,28 @@ const donationWizard = new Scenes.WizardScene('donation-wizard', async (ctx) => 
       return; 
     }    
     ctx.wizard.state.donation.quantity = parseFloat(ctx.message.text);
-    await sleep(Math.floor(Math.random() * 500));
-    ctx.reply('Chi li ha donati? Inserisci il codice fornitore')
+    var btns = []
+
+    db.providers.forEach(p => {
+        btns.push([Markup.button.text(p.name)])
+    })
+
+    ctx.reply('Chi li ha donati?', Markup.keyboard(btns))
 
     return ctx.wizard.next();
   },  
   async (ctx) => {
 
-    if (!(/^([a-zA-Z][0-9]+)$/.test(ctx.message.text))) {
-      ctx.reply('Perfavore inserisci un codice fornitore valido (es. A24).');
-      return; 
-    }
-    
-    provider = db.getProviderByKey(ctx.message.text.toUpperCase())
+    provider = db.getProviderByName(ctx.message.text)
 
     if (!provider.length){
-      ctx.reply('Non conosco questo codice fornitore. Riprova.');
+      ctx.reply('Non conosco questo fornitore. Riprova.');
       return;         
     }
 
+    ctx.reply("Grazie!", Markup.removeKeyboard())
+
     ctx.wizard.state.donation.provider = provider[0].name;
-    
-    await sleep(Math.floor(Math.random() * 500));
     
     curDonation = ctx.wizard.state.donation
 
@@ -91,10 +176,10 @@ const donationWizard = new Scenes.WizardScene('donation-wizard', async (ctx) => 
     message += '\n*Donatore* ' + provider[0].name + ' (' + provider[0].key + ')'
 
     ctx.replyWithMarkdown(message,
-        Markup.inlineKeyboard([
-        Markup.button.callback('✔️ Salva', `recordDonation`),
-        Markup.button.callback('✏️ Modifica', `newDonation`),
-        Markup.button.callback('❌ Annulla', `startMenu`),        
+    Markup.inlineKeyboard([
+        [Markup.button.callback('Modifica ✏️', `newDonation`),
+         Markup.button.callback('Annulla ❌', `startMenu`)],
+        [Markup.button.callback('Salva ✔️', `recordDonation`)]
     ]))
 
     return ctx.scene.leave();
@@ -103,8 +188,6 @@ const donationWizard = new Scenes.WizardScene('donation-wizard', async (ctx) => 
 
 const sortingWizard = new Scenes.WizardScene('sorting-wizard', (ctx) => {
     ctx.replyWithMarkdown('*Selezione*\nQuale prodotto hai smistato?');
-
-    // TODO - GraphQL Get inventory (?)
 
     ctx.wizard.state.sorting = {};
     return ctx.wizard.next();
@@ -116,26 +199,29 @@ const sortingWizard = new Scenes.WizardScene('sorting-wizard', (ctx) => {
     }
     ctx.wizard.state.sorting.name = ctx.message.text;
     
-    await sleep(Math.floor(Math.random() * 500));
     ctx.reply('Quale era il peso iniziale? (in kg)');
     
     return ctx.wizard.next();
   },
    async (ctx) => {
-    if (isNaN(ctx.message.text)) {
+    if (!ctx.message || isNaN(ctx.message.text)) {
       ctx.reply('Perfavore inserisci un numero.');
       return; 
     }
 
+    if (parseFloat(ctx.message.text) <= 0){
+      ctx.reply('Il peso iniziale non può essere negativo.');
+      return;         
+    }    
+
     ctx.wizard.state.sorting.start_quantity = parseFloat(ctx.message.text);
     
-    await sleep(Math.floor(Math.random() * 500));
     ctx.reply('Quale è il peso finale? (in kg)')
 
     return ctx.wizard.next();
   },
    async (ctx) => {
-    if (isNaN(ctx.message.text)) {
+    if (!ctx.message || isNaN(ctx.message.text)) {
       ctx.reply('Perfavore inserisci un numero.');
       return; 
     }
@@ -152,162 +238,162 @@ const sortingWizard = new Scenes.WizardScene('sorting-wizard', (ctx) => {
 
     ctx.wizard.state.sorting.end_quantity = parseFloat(ctx.message.text);
 
-    await sleep(Math.floor(Math.random() * 500));
-    ctx.reply('Hai note da aggiungere?')
-
-    return ctx.wizard.next();
-  },
-   async (ctx) => {
-
-    if (ctx.message.text.toLowerCase() == "no") {
-        ctx.wizard.state.sorting.notes = ""
-        await ctx.reply('Ok');
-    } else {
-        ctx.wizard.state.sorting.notes = ctx.message.text;
-    }
+    ctx.wizard.state.sorting.notes = ""
 
     curSorting = ctx.wizard.state.sorting;
 
     var message = '🍌 *Riepilogo selezione*'
     message += '\nRecuperati ' + curSorting.end_quantity + ' kg di ' + curSorting.name + ' su ' + curSorting.start_quantity +' kg iniziali.'
-    
-    if (curSorting.notes.length > 0)
-        message += '\nNote: ' + curSorting.notes
 
     ctx.replyWithMarkdown(message,
-        Markup.inlineKeyboard([
-        Markup.button.callback('✔️ Salva', `recordSorting`),
-        Markup.button.callback('✏️ Modifica', `newSorting`),
-        Markup.button.callback('❌ Annulla', `startMenu`),        
+    Markup.inlineKeyboard([
+        [Markup.button.callback('Modifica ✏️', `newSorting`),
+         Markup.button.callback('Annulla ❌', `startMenu`)],
+        [Markup.button.callback('Salva ✔️', `recordSorting`)]
     ]))
 
     return ctx.scene.leave();
   },
 );
 
-const offerWizard = new Scenes.WizardScene('offer-wizard', async (ctx) => {
-    
-    if (Object.keys(curSorting).length > 0) {
+async function transferHelper(ctx) {
 
-        var message = '🍌 *Riepilogo donazione*'
-        message += '\n*Prodotto:* ' + curSorting.name
-        message += '\n*Quantità:* ' + curSorting.end_quantity + ' kg'
-    
-        if (curSorting.notes.length > 0)
-            message += '\n- Note: ' + curSorting.notes
+        var start = new Date();
+        start.setHours(0,0,0,0);
 
-        var r_id = db.getCRI()[0].reflow_id
-        var u_id = db.getUnitByLabel('kg')[0].reflow_id    
-        var quantity = {hasUnit: u_id, hasNumericalValue: curSorting.end_quantity}
+        var end = new Date();
+        end.setHours(23,59,59,999);
 
-        var res = await client.request(queries.recordOffer, {receiver_id: r_id, resource_id: curSorting.resource_id, quantity: quantity})
-
-        console.log("> New offer created!")
-
-        console.log(res)
-
-        ctx.replyWithMarkdown(message).then(() =>
-            ctx.reply('Grazie, donazione inviata!').then(async () =>
-             {await sleep(2000); startMenu(ctx)}));
-        
-        curSorting = {}
-
-        return ctx.scene.leave();
-
-    } else {
         var agent_id = db.getRECUP()[0].reflow_id
-        var tag_id = db.getTagFromLabel('sorted')[0].reflow_id
 
-        var res = await client.request(queries.getFilteredInventory, {agent: agent_id, tag: tag_id})
+        var res = await request(queries.getDailyReport, {action:"consume", provider_id: agent_id, receiver_id: agent_id, start_date: start.toISOString(), end_date: end.toISOString()})
+
+        if (res.economicEventsFiltered.length == 0){
+            ctx.reply("Non hai ancora effettuato smistamenti ☹️")
+            return
+        }
 
         var btns = []
 
-        res.economicResourcesFiltered.forEach(r => {
+        res.economicEventsFiltered.forEach(r => {
             console.log(r)
-
+            r = r.resourceInventoriedAs
             var name = r.name
             var qty = r.onhandQuantity.hasNumericalValue
             var unit = r.onhandQuantity.hasUnit.symbol
-            var notes = r.note
 
             if (qty > 0) {
                 var btn_text = name + ' / ' + qty + ' ' + unit
-                if (notes)
-                    btn_text += ' / ' + notes
 
-                btns.push([Markup.button.callback(btn_text, `recordOffer ${r.id}-${qty}`)])
+                btns.push([Markup.button.callback(btn_text, `recordTransfer ${r.id}`)])
             }
         })
 
-        if (btns.length == 0) {
-            ctx.reply('Tutti i prodotti sono stati già offerti! 🎉')        
-        } else {
-            btns.push([Markup.button.callback('Annulla', `startMenu`)])
-            ctx.replyWithMarkdown('*Ridistribuzione*\nQuale prodotto vuoi ridistribuire?', Markup.inlineKeyboard(btns));
-        }
+        btns.push([Markup.button.callback('Annulla', `startMenu`)])
+        ctx.replyWithMarkdown('*Ritiro*\nQuale prodotto vuoi trasferire?', Markup.inlineKeyboard(btns));
+    
         return ctx.scene.leave();
-    }
-  },
-);
+}
 
 const transferWizard = new Scenes.WizardScene('transfer-wizard', async (ctx) => {
+
+        if (Object.keys(curSorting).length > 0) {
+
+            console.log(curSorting)
+            curTransfer = curSorting
+       
+            var btns = []
+
+            db.getReceivers().forEach(p => {
+                btns.push([Markup.button.text(p.name)])
+            })
+
+            ctx.reply('A chi lo hai donato?', Markup.keyboard(btns))
+            return ctx.wizard.next();
         
-    var agent_id = db.getRECUP()[0].reflow_id
+        } else 
+            return ctx.scene.leave();
 
-    var res = await client.request(queries.getSatisfactions)
+    },
+    async (ctx) => {
 
-    res = queries.filterSatisfactions(res.satisfactions, agent_id, false)
+        receiver = db.getUserByName(ctx.message.text)
 
-    var btns = []
-
-    res.forEach(r => {
-        console.log(r)
-
-        var name = r.satisfies.resourceInventoriedAs.name
-        var who = db.getUserFromRFid(r.satisfiedBy.provider.id)[0].name
-        var qty = r.resourceQuantity.hasNumericalValue
-        var unit = r.resourceQuantity.hasUnit.symbol
-
-        if (qty > 0) {
-            var btn_text = who + ' / ' + name + ' / ' + qty + ' ' + unit
-
-            btns.push([Markup.button.callback(btn_text, `recordTransfer ${r.id}`)])
+        if (!receiver.length){
+          ctx.reply('Non conosco questo utente. Riprova.');
+          return;         
         }
-    })
 
-    if (btns.length == 0) {
-        ctx.reply('Tutte le donazioni sono state ritirate! 🎉')        
-    } else {
-        btns.push([Markup.button.callback('Annulla', `startMenu`)])
-        ctx.replyWithMarkdown('*Ritiro*\nQuale delle seguenti donazioni è stata ritirata?', Markup.inlineKeyboard(btns));
-    }
-    return ctx.scene.leave();
-});
+        curTransfer.receiver = receiver[0].reflow_id;
+        curTransfer.provider = db.getRECUP()[0].reflow_id
 
-const stage = new Scenes.Stage([donationWizard, sortingWizard, offerWizard, transferWizard]);
+        ctx.reply('Quanti kg ha ritirato?', Markup.removeKeyboard())
+        return ctx.wizard.next();
+    },
+    async (ctx) => {
+    
+        if (!ctx.message || isNaN(ctx.message.text)) {
+            ctx.reply('Perfavore inserisci un numero.');
+            return; 
+        }
+    
+        if (ctx.message.text > curTransfer.end_quantity){
+          ctx.reply('Il peso donato non può essere maggiore di quello smistato.');
+          return;         
+        }
+
+        if (parseFloat(ctx.message.text) <= 0){
+          ctx.reply('Il peso donato non può essere negativo.');
+          return;         
+        }
+
+        curTransfer.qty = parseFloat(ctx.message.text);
+
+        var u_id = db.getUnitByLabel('kg')[0].reflow_id
+        
+        var quantity = {hasUnit: u_id, hasNumericalValue: curTransfer.qty}
+
+        console.log('> Saving transfer')
+
+        var res = await request(queries.recordAction, {action: "transfer", provider_id: curTransfer.provider, receiver_id: curTransfer.receiver, quantity: quantity, resource_id: curTransfer.resource_id, date: now()})
+
+        console.log(res)
+
+        ctx.reply('Grazie, trasferimento registrato!', Markup.removeKeyboard()).then(startMenu(ctx))
+        
+        curSorting = {}
+        curTransfer = {}
+        return ctx.scene.leave();
+  },
+
+);
+
+const stage = new Scenes.Stage([donationWizard, sortingWizard, transferWizard]);
 bot.use(session());
 bot.use(stage.middleware());
 
-bot.action('startMenu', (ctx) => {
-    curDonation = {}
+bot.action('startMenu', async (ctx) => {
+    curDonation = {}    
     curSorting = {}
-    ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
+    curTransfer = {}
+
+    //await ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
     startMenu(ctx);
 });
 
-bot.action('newOffer', (ctx) => {
-    ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
-    ctx.scene.enter('offer-wizard')
-})
-
-bot.action('newDonation', (ctx) => {
-    ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
+bot.action('newDonation', async (ctx) => {
+    //await ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
     ctx.scene.enter('donation-wizard')
 })
 
-bot.action('newSorting', (ctx) => {
-    ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
+bot.action('newSorting', async (ctx) => {
+    //await ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
     ctx.scene.enter('sorting-wizard')
+})
+
+bot.action('newTransfer', async (ctx) => {
+    //await ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
+    ctx.scene.enter('transfer-wizard')
 })
 
 bot.action('recordSorting', async (ctx) => {
@@ -320,7 +406,7 @@ bot.action('recordSorting', async (ctx) => {
         var tag = db.getTagFromLabel('sorted')[0].reflow_id
         var notes = curSorting.notes
 
-        var res = await client.request(queries.recordActionNewResource, {action: "produce", provider_id: p_id, receiver_id: p_id, quantity: init_qnt, product_name: curSorting.name, tags: tag, notes: notes})
+        var res = await request(queries.recordActionNewResource, {action: "produce", provider_id: p_id, receiver_id: p_id, quantity: init_qnt, product_name: curSorting.name, tags: tag, notes: notes, date: now()})
 
         console.log("> Produce done.")
         
@@ -328,26 +414,28 @@ bot.action('recordSorting', async (ctx) => {
 
         var consume_qnt = {hasUnit: u_id, hasNumericalValue: curSorting.start_quantity - curSorting.end_quantity}
 
-        var res = await client.request(queries.recordAction, {action:"consume", provider_id: p_id, quantity: consume_qnt, resource_id: curSorting.resource_id})
+        var res = await request(queries.recordAction, {action:"consume", provider_id: p_id, quantity: consume_qnt, resource_id: curSorting.resource_id, date: now()})
 
         console.log("> Consume done.")
-
         console.log(res)
+
+        await ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
+        
+        await sendOffer(ctx, curSorting)
 
         ctx.reply('Grazie, selezione registrata!').then(async () => {
             console.log(curSorting);
-            await sleep(1500)
-            ctx.replyWithMarkdown("Vuoi distribuirlo subito?",
+            ctx.replyWithMarkdown("Vuoi registrare anche il suo trasferimento?",
                 Markup.inlineKeyboard([
-                Markup.button.callback('👍 Si', `newOffer`),
-                Markup.button.callback('👎 No', `startMenu`)
+                Markup.button.callback('👎 No', `startMenu`),
+                Markup.button.callback('👍 Si', `newTransfer`)
             ]))
         });
     }
 })
 
 bot.action('recordDonation', async (ctx) => {
-    ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
+    await ctx.editMessageReplyMarkup({ inline_keyboard: null }, { chat_id: ctx.callbackQuery.message.chat.id, message_id: ctx.callbackQuery.message.message_id });    
     
     if (Object.keys(curDonation).length > 0){
         console.log('> Saving donation:')
@@ -358,12 +446,11 @@ bot.action('recordDonation', async (ctx) => {
         var u_id = db.getUnitByLabel('colli')[0].reflow_id
         var quantity = {hasUnit: u_id, hasNumericalValue: curDonation.quantity}
 
-        var res = await client.request(queries.recordActionNewResource, {action: "transfer", provider_id: p_id, receiver_id: r_id, quantity: quantity, product_name: curDonation.name})
+        var res = await request(queries.recordActionNewResource, {action: "transfer", provider_id: p_id, receiver_id: r_id, quantity: quantity, product_name: curDonation.name, date: now()})
 
         console.log(res)
 
-        ctx.reply('Grazie, donazione registrata!').then(async () => {await sleep(2000); startMenu(ctx)})
-        curDonation = {}
+        ctx.reply('Grazie, donazione registrata!').then(startMenu(ctx))
     }
 });
 
@@ -394,16 +481,16 @@ function refuseDonation(donationID) {
 
     console.log(donationID)
 
-    client.request(queries.getIntent, {intent_id: donationID}).then((res) => {
+    request(queries.getIntent, {intent_id: donationID}).then((res) => {
 
         console.log(res)
         var unit = res.intent.availableQuantity.hasUnit.id
 
-        client.request(queries.createCommitment, {provider_id: db.getRECUP()[0].reflow_id , receiver_id: res.intent.provider.id}).then((res) => {
+        request(queries.createCommitment, {provider_id: db.getRECUP()[0].reflow_id , receiver_id: res.intent.provider.id, date: now()}).then((res) => {
 
             let quantity = {hasUnit: unit, hasNumericalValue: 0}
 
-            client.request(queries.createSatisfaction, {intent_id: donationID, commitment_id: res.createCommitment.commitment.id, quantity: quantity}).then((res) => {
+            request(queries.createSatisfaction, {intent_id: donationID, commitment_id: res.createCommitment.commitment.id, quantity: quantity}).then((res) => {
 
                 console.log("> Donation refused!")
 
@@ -419,43 +506,19 @@ function acceptDonation(donationID) {
 
     console.log(donationID)
 
-    client.request(queries.getIntent, {intent_id: donationID}).then((res) => {
+    request(queries.getIntent, {intent_id: donationID}).then((res) => {
 
         console.log(res)
         var unit = res.intent.availableQuantity.hasUnit.id
         var qty = res.intent.availableQuantity.hasNumericalValue
 
-        client.request(queries.createCommitment, {provider_id: db.getRECUP()[0].reflow_id , receiver_id: res.intent.provider.id}).then((res) => {
+        request(queries.createCommitment, {provider_id: db.getRECUP()[0].reflow_id , receiver_id: res.intent.provider.id, date: now()}).then((res) => {
 
             let quantity = {hasUnit: unit, hasNumericalValue: qty}
 
-            client.request(queries.createSatisfaction, {intent_id: donationID, commitment_id: res.createCommitment.commitment.id, quantity: quantity}).then((res) => {
+            request(queries.createSatisfaction, {intent_id: donationID, commitment_id: res.createCommitment.commitment.id, quantity: quantity}).then((res) => {
 
                 console.log("> Donation accepted!")
-
-                console.log(res)
-
-            })
-        })
-    })
-}
-
-function acceptOffer(offerID, qty) {
-
-    console.log(offerID)
-
-    client.request(queries.getIntent, {intent_id: offerID}).then((res) => {
-
-        console.log(res)
-        var unit = res.intent.availableQuantity.hasUnit.id
-
-        client.request(queries.createCommitment, {provider_id: db.getCRI()[0].reflow_id , receiver_id: res.intent.provider.id}).then((res) => {
-
-            let quantity = {hasUnit: unit, hasNumericalValue: qty}
-
-            client.request(queries.createSatisfaction, {intent_id: offerID, commitment_id: res.createCommitment.commitment.id, quantity: quantity}).then((res) => {
-
-                console.log("> Offer accepted!")
 
                 console.log(res)
 
@@ -467,7 +530,7 @@ function acceptOffer(offerID, qty) {
 /* Parse and format GraphQL response to Telegram message */
 async function parseDonations(ctx, data) {
     for (const x of data) {
-        
+        console.log(x)
         // consider only donations without response        
         if (x.satisfiedBy.length == 0) {
 
@@ -513,84 +576,53 @@ async function parseDonations(ctx, data) {
     }
 }
 
-async function parseOffers(ctx, data) {
-    for (const x of data) {
-        console.log(x)
-        // consider only offers without response        
-        if (x.satisfiedBy.length == 0) {
+async function sendOffer(ctx, data) {
 
-            message = '📦 *Nuova donazione*'
-            
-            if (x.resourceInventoriedAs) {
-                var res = x.resourceInventoriedAs
+    var message = '📦 Nuova donazione'
 
-                if (res.onhandQuantity.hasNumericalValue > 0) {
+    message += '\nSono disponibili per il ritiro ' + data.end_quantity + ' kg'
+    message += ' di ' + data.name + '.'
 
-                    message += '\nSono disponibili per il ritiro ' + res.onhandQuantity.hasNumericalValue
-                    message += ' ' + res.onhandQuantity.hasUnit.symbol
-                    message += ' di ' + res.name +'.'
-                } else {
-                    continue;
-                }
-            } else {
-                continue;
-            }
+    if (data.note)
+        message += '\nNote: ' + data.note
+    
+    message += "\n\nTi interessa?"
 
-            if (res.note)
-                message += '\nNote: ' + res.note
+    var g_id = db.getGroupFromName('OUT')[0].tg_id
 
-            message += "\n\nQuanto puoi ritirare?"
-
-            let qty = res.onhandQuantity.hasNumericalValue
-            await ctx.replyWithMarkdown(message,
-                Markup.inlineKeyboard([
-                Markup.button.callback('🤏 ' + Math.floor(qty*0.25), `acceptOffer ${x.id}-${Math.floor(qty*0.25)}`),
-                Markup.button.callback('☝️ ' + Math.floor(qty*0.5), `acceptOffer ${x.id}-${Math.floor(qty*0.5)}`),
-                Markup.button.callback('✌️ ' + Math.floor(qty*0.75), `acceptOffer ${x.id}-${Math.floor(qty*0.75)}`),
-                Markup.button.callback('🤘 ' + qty, `acceptOffer ${x.id}-${qty}`),
-            ]))
-        } else {
-            continue
-        }
-    }
+    await ctx.telegram.sendMessage(g_id, message, Markup.inlineKeyboard([
+                Markup.button.callback('👍 Si', `acceptOffer`),
+                Markup.button.callback('👎 No', `refuseOffer`)])
+                )
 }
 
-bot.action(/acceptOffer (.+)/, (ctx, next) => {
-
-    // get offerID to accept
-    let offerId = ctx.match[1].split('-')[0]
-
-    // get accepted quantity
-    let qty = parseFloat(ctx.match[1].split('-')[1])
-
+bot.action('acceptOffer', (ctx, next) => {
+    console.log(ctx)
+    // get user id
+    let u_id = db.getUserFromTGid(ctx.from.id)
     // get old message text
-    let msg = ctx.update.callback_query.message.text
-    // update the content of the message
-    let new_msg = msg.substring(0, msg.length-21)
-    new_msg += '👍 *Accettati ' + qty +' kg da '+ ctx.from.first_name + '*'
-
-    return ctx.editMessageText(new_msg, {parse_mode: 'Markdown'}).then(() => acceptOffer(offerId, qty))
+    let msg = ctx.update.callback_query.message.text 
+    if (u_id.length > 0){
+        msg += '\n👍 Interessa a '+ u_id[0].name 
+        return ctx.editMessageText(msg, Markup.inlineKeyboard([
+                Markup.button.callback('👍 Si', `acceptOffer`),
+                Markup.button.callback('👎 No', `refuseOffer`)])
+                )
+    }
 })
 
-bot.action(/recordOffer (.+)/, async (ctx, next) => {
-    // get resourceID to offer
-    let res_id = ctx.match[1].split('-')[0]
-
-    // get offered quantity
-    let qty = parseFloat(ctx.match[1].split('-')[1])
-    var u_id = db.getUnitByLabel('kg')[0].reflow_id    
-    
-    var quantity = {hasUnit: u_id, hasNumericalValue: qty}
-
-    let r_id = db.getCRI()[0].reflow_id
-
-    var res = await client.request(queries.recordOffer, {receiver_id: r_id, resource_id: res_id, quantity: quantity})
-
-    console.log("> New offer created!")
-
-    console.log(res)
-
-    return ctx.reply('Grazie, donazione inviata!').then(async () => {await sleep(2000); startMenu(ctx)});
+bot.action('refuseOffer', (ctx, next) => {
+    // get user id
+    let u_id = db.getUserFromTGid(ctx.from.id)
+    // get old message text
+    let msg = ctx.update.callback_query.message.text
+    if (u_id.length > 0){
+        msg += '\n👎 Non interessa a '+ u_id[0].name
+        return ctx.editMessageText(msg, Markup.inlineKeyboard([
+                Markup.button.callback('👍 Si', `acceptOffer`),
+                Markup.button.callback('👎 No', `refuseOffer`)])
+                )
+    }
 })
 
 bot.action(/acceptDonation (.+)/, (ctx, next) => {
@@ -618,41 +650,80 @@ bot.action(/refuseDonation (.+)/, (ctx, next) => {
 })
 
 bot.action(/recordTransfer (.+)/, async (ctx, next) => {
-
-    // get satifactionId to transfer
-    let s_id = ctx.match[1]
-
-    var res = await client.request(queries.getSatisfaction, {s_id: s_id})
-
-    // get provider id
-    var p_id = res.satisfaction.satisfiedBy.receiver.id
-
-    // get receiver id
-    var r_id = res.satisfaction.satisfiedBy.provider.id
-
-    // get resource id
-    var res_id = res.satisfaction.satisfies.resourceInventoriedAs.id
-
-    // get intent id
-    var i_id = res.satisfaction.satisfies.id
-
-    // get accepted quantity
-    var qty = res.satisfaction.resourceQuantity.hasNumericalValue
-
-    // get accepted unit
-    var u_id = res.satisfaction.resourceQuantity.hasUnit.id
-
-    var quantity = {hasUnit: u_id, hasNumericalValue: qty}
-
-    console.log('> Saving transfer')
-
-    var res = await client.request(queries.recordAction, {action: "transfer", provider_id: p_id, receiver_id: r_id, quantity: quantity, resource_id: res_id})
-
-    var res = await client.request(queries.finishIntent, {intent_id: i_id})
-
-    ctx.reply('Grazie, trasferimento registrato!').then(async () => {await sleep(2000); startMenu(ctx)})
-
+    // get resourceid to transfer
+    curSorting.resource_id = ctx.match[1]
+    ctx.scene.enter('transfer-wizard')
 })
+
+bot.command('debugbolla', async ctx => {
+    var args = ctx.update.message.text.split(' ')
+
+    var agent_id = args[1]
+    var date = args[2]
+
+    var start = new Date(date);
+    start.setHours(0,0,0,0);
+
+    var end = new Date(date);
+    end.setHours(23,59,59,999);
+
+    var res = await request(queries.getDailyReport, {action: "transfer", provider_id: db.getRECUP()[0].reflow_id, receiver_id: agent_id, start_date: start.toISOString(), end_date: end.toISOString()})
+    if (res.economicEventsFiltered.length == 0)
+        ctx.reply("Oggi non hai effettuato ritiri ☹️")
+    else {
+        ctx.reply("Oggi hai effettuato " + res.economicEventsFiltered.length + " ritiri.\n⌛ Genero la bolla...")
+        try {
+            var filename = await generateDoc(agent_id, res, date)
+            console.log(filename)
+            await ctx.reply("Bolla pronta! 🚀")
+            await ctx.replyWithDocument({source: filename});
+        } catch (err) {
+             console.log('ERROR:', err);
+            }
+    }
+})
+
+
+bot.command('bolla', async ctx => {
+    console.log(String(ctx.from.id))
+
+    // check if user is registered
+    var u = db.getUserFromTGid(ctx.from.id)
+    console.log(u)
+    if (u.length > 0) {
+        var agent_id = u[0].reflow_id
+
+        if (agent_id.length > 0) {
+            var start = new Date();
+            start.setHours(0,0,0,0);
+
+            var end = new Date();
+            end.setHours(23,59,59,999);
+
+            var res = await request(queries.getDailyReport, {action: "transfer", provider_id: db.getRECUP()[0].reflow_id, receiver_id: agent_id, start_date: start.toISOString(), end_date: end.toISOString()})
+            if (res.economicEventsFiltered.length == 0)
+                ctx.reply("Oggi non hai effettuato ritiri ☹️")
+            else {
+                ctx.reply("Oggi hai effettuato " + res.economicEventsFiltered.length + " ritiri.\n⌛ Genero la bolla...")
+                try {
+                    var filename = await generateDoc(agent_id, res)
+                    console.log(filename)
+                    await ctx.reply("Bolla pronta! 🚀")
+                    await ctx.replyWithDocument({source: filename});
+                } catch (err) {
+                   console.log('ERROR:', err);
+                }
+            }
+        }        
+    }
+})
+
+// Debug only : make a request to get all donations
+bot.command('debugme', async ctx => {
+    DEBUG = true
+    startMenu(ctx)
+})
+
 
 // Debug only : make a request to get all donations
 bot.command('now', async ctx => {
@@ -662,7 +733,7 @@ bot.command('now', async ctx => {
     if (db.isAdminFromTGid(ctx.from.id)){
         
         // GraphQL - request all Intents made for a specific Agent and without Satisfaction
-        var res = await client.request(queries.getIntents, {receiver_id: db.getRECUP()[0].reflow_id})
+        var res = await request(queries.getIntents, {receiver_id: db.getRECUP()[0].reflow_id})
             
         if (res.intents.length > 0){
             // return all intents to Telegram
@@ -675,11 +746,12 @@ bot.on('callback_query', function(ctx){
     const menu_item = ctx.update.callback_query.data;
     
     if (db.isAdminFromTGid(ctx.from.id)) {
+        ctx.deleteMessage();
+
         switch(menu_item) {
             case 'menu_donation' : return ctx.scene.enter('donation-wizard'); break;
             case 'menu_sorting'  : return ctx.scene.enter('sorting-wizard'); break;
-            case 'menu_offer'    : return ctx.scene.enter('offer-wizard'); break;
-            case 'menu_transfer' : return ctx.scene.enter('transfer-wizard'); break;
+            case 'menu_transfer' : return transferHelper(ctx); break;
         }
     }
 });
@@ -687,50 +759,38 @@ bot.on('callback_query', function(ctx){
 function getDonations(ctx) {
 
     // GraphQL - request all new Intents made for a specific Agent
-    // TODO : update with DateTime filter
-    client.request(queries.getIntents, {receiver_id: db.getRECUP()[0].reflow_id, num: 500}).then((res) => {
+
+    // get donations timestamp end
+    var newDonationsTS = new Date()
     
-        console.log("> Current donations #" + res.intents.length)
+    if (lastDonationTS == 0)
+        // get start timestamp as old as 30 minutes ago
+        lastDonationTS = new Date(newDonationsTS - config.bot.donation_timeout)
+    
+    //console.log(lastDonationTS)
+    console.log(newDonationsTS)
+    console.log(">> Checking for donations")
+    request(queries.getIntents, {receiver_id: db.getRECUP()[0].reflow_id, start_date: lastDonationTS.toISOString(), end_date: newDonationsTS.toISOString()}).then((res) => {
+    
+        lastDonationTS = newDonationsTS
+        
+        //console.log("> Current donations #" + res.intents.length)
 
-        let newDonations = res.intents.length - numDonation
-
-        if (newDonations > 0) {
-
-            numDonation = res.intents.length
-
+        if (res.intents.length > 0) {
             // return all intents to Telegram
-            parseDonations(ctx, res.intents.slice(0,newDonations))
+            parseDonations(ctx, res.intents)
         
         }  else {
-            console.log("> No new donations.")
-        }
-    })
-}
-
-function getOffers(ctx) {
-
-    // GraphQL - request all new Intents made for a specific Agent
-    // TODO : update with DateTime filter
-    client.request(queries.getIntents, {receiver_id: db.getCRI()[0].reflow_id, num: 500}).then((res) => {
-
-        console.log("> Current offers #" + res.intents.length)
-
-        let newOffers = res.intents.length - numOffer
-
-        if (newOffers > 0) {
-
-            numOffer = res.intents.length
-    
-            // return all intents to Telegram
-            parseOffers(ctx, res.intents.slice(0,newOffers))
-
-        }  else {
-            console.log("> No new offers.")
+            //console.log("> No new donations.")
         }
     })
 }
 
 function startMenu(ctx) {
+    curDonation = {}    
+    curSorting = {}
+    curTransfer = {}
+     
     ctx.replyWithMarkdown('🍌 Ciao, cosa vuoi registrare?', {
        'reply_markup': {
            'inline_keyboard': [[{
@@ -740,10 +800,7 @@ function startMenu(ctx) {
                 text: '2. Selezione',
                 callback_data: 'menu_sorting'
             }],[{
-                text: '3. Ridistribuzione', 
-                callback_data: 'menu_offer'
-            }],[{
-                text: '4. Ritiro',
+                text: '3. Ritiro',
                 callback_data: 'menu_transfer'
             }]]
         }
@@ -758,14 +815,11 @@ function startNotifications(ctx, group_name) {
 
         si_donations = setInterval(() => { getDonations(ctx) } , config.bot.polling_time)
     
-    } else if (group_name == "OUT") {
-
-        si_offers = setInterval(() => { getOffers(ctx) }, config.bot.polling_time)
     }
 }
 
 async function createSession() {
-    var session = await client.request(queries.login, {username: secrets.reflow.username, password: secrets.reflow.password})
+    var session = await request(queries.login, {username: secrets.reflow.username, password: secrets.reflow.password})
     console.log("> Login...")
     console.log(session)
     client.setHeader('authorization', 'Bearer ' + session.login.token)
@@ -796,9 +850,6 @@ bot.command('stop', ctx => {
         
             clearInterval(si_donations);
 
-        } else if (ctx.chat.id == db.getGroupFromName('OUT')[0].tg_id) {
-        
-            clearInterval(si_offers);
         }
 
         ctx.replyWithMarkdown('🍌 *BOTTO spento!*\nBye bye 👋')
@@ -811,8 +862,8 @@ bot.on("inline_query", async ctx => {
 
 /* Listen and handle channel posts */
 bot.on('text', ctx => {
-
-    if (ctx.message.text.includes(ctx.me) && db.isAdminFromTGid(ctx.from.id)) {
+    console.log(ctx.from.id)
+    if (ctx.message.text.includes(ctx.me) && db.isAdminFromTGid(ctx.from.id) && ctx.chat.id == db.getGroupFromName('IN')[0].tg_id) {
     
         startMenu(ctx)
     

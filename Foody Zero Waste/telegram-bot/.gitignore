@@ -130,3 +130,5 @@ dist
 
 secrets.js
 package-lock.json
+pdf
+*.png
