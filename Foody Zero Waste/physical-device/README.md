@@ -19,7 +19,7 @@ The source files of the **custom PCB** of BOTTO can be found [here](https://gith
 
 ### Software
 
-The **firmware** of BOTTO device with configuration and installation instructions can be found [here](https://github.com/reflow-project/Milan-pilot/tree/main/Foody%20Zero%20Waste/physical-device/Software/PCB/)
+The **firmware** of BOTTO device with configuration and installation instructions can be found [here](https://github.com/reflow-project/Milan-pilot/tree/main/Foody%20Zero%20Waste/physical-device/Software/)
 
 ## Acknowledge
 Foody Zero Waste is part of a project that has received funding from the European Union's Horizon 2020 research and innovation programme under grant agreement number 820937.
