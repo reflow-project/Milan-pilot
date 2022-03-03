@@ -33,8 +33,8 @@ const queries = {
     }`,
 
   getIntents: gql`
-    query getIntents($receiver_id: ID!, $num: Int) {
-      intents(filter: {receiver: $receiver_id}, start: 0, limit: $num){
+    query getIntents($provider_id: ID, $receiver_id: ID, $start_date: DateTime, $end_date: DateTime){
+      intents(filter: { provider: $provider_id, receiver: $receiver_id, startDate: $start_date, endDate: $end_date}){
         id,
         provider{
           id,
@@ -58,7 +58,8 @@ const queries = {
               symbol
             }
           }
-        }
+        },
+        hasPointInTime,
         note,
         satisfiedBy{
           id
@@ -67,8 +68,8 @@ const queries = {
     }`,
 
   finishIntent: gql`
-    mutation finishIntent($intent_id: ID!){
-      updateIntent(intent:{id: $intent_id, finished:true}){
+    mutation finishIntent($intent_id: ID!, $date: DateTime){
+      updateIntent(intent:{id: $intent_id, hasPointInTime: $date, finished:true}){
         intent{
           id
           finished
@@ -76,14 +77,44 @@ const queries = {
       }
     }`,
 
+  getDailyReport: gql`
+    query getDailyReport($action: ID, $provider_id: ID, $receiver_id: ID, $start_date: String, $end_date: String){
+      economicEventsFiltered(action: $action, providerId: $provider_id, receiverId: $receiver_id, startDate: $start_date, endDate: $end_date){
+        id
+        hasPointInTime
+        receiver{
+          id
+          name
+          note
+        }
+        resourceInventoriedAs{
+          id
+          name
+          onhandQuantity{
+            hasNumericalValue
+            hasUnit{
+              symbol
+            }
+          }
+        }
+        resourceQuantity{
+          hasUnit{
+            symbol
+          }
+          hasNumericalValue
+        }
+      }
+    } `,
+
   recordActionNewResource: gql`
-    mutation recordAction($action: ID!, $provider_id: ID!, $receiver_id: ID!, $quantity: IMeasure!, $product_name: String!, $tags: ID, $notes: String) {
+    mutation recordAction($action: ID!, $provider_id: ID!, $receiver_id: ID!, $quantity: IMeasure!, $product_name: String!, $tags: ID, $notes: String, $date: DateTime) {
       createEconomicEvent(
       event: {
         action: $action,
         provider: $provider_id,
         receiver: $receiver_id,
-        resourceQuantity: $quantity
+        resourceQuantity: $quantity,
+        hasPointInTime: $date
       },
       newInventoriedResource: {
         name: $product_name,
@@ -117,14 +148,15 @@ const queries = {
     }`,
 
   recordAction: gql`
-    mutation recordAction($action: ID!, $provider_id: ID!, $receiver_id: ID, $quantity: IMeasure, $resource_id: ID!) {
+    mutation recordAction($action: ID!, $provider_id: ID!, $receiver_id: ID, $quantity: IMeasure, $resource_id: ID!, $date: DateTime) {
       createEconomicEvent(
         event: {
           action: $action,
           provider: $provider_id,
           receiver: $receiver_id, 
           resourceQuantity: $quantity,
-          resourceInventoriedAs: $resource_id
+          resourceInventoriedAs: $resource_id,
+          hasPointInTime: $date
         }
       ) {
         economicEvent {
@@ -153,13 +185,14 @@ const queries = {
     }`,
 
   recordOffer: gql`
-    mutation recordOffer($receiver_id: ID!, $resource_id: ID!, $quantity: IMeasure){
+    mutation recordOffer($receiver_id: ID, $resource_id: ID!, $quantity: IMeasure, $date: DateTime){
       createOffer(intent: {
         action: "transfer",
         name: "Donazione",
         receiver: $receiver_id,
         resourceInventoriedAs: $resource_id,
-        availableQuantity: $quantity
+        availableQuantity: $quantity,
+        hasPointInTime: $date
       }
       ) {
         intent {
@@ -168,9 +201,6 @@ const queries = {
           note
           provider {
             name
-          }
-          receiver {
-           name
           }
           availableQuantity {
             hasUnit {
@@ -204,12 +234,13 @@ const queries = {
     }`,
 
   createCommitment: gql`
-    mutation createCommitment($provider_id: ID!, $receiver_id: ID!){
+    mutation createCommitment($provider_id: ID, $receiver_id: ID, $date: DateTime){
       createCommitment(
         commitment:{
           action:"transfer"
           provider: $provider_id,
           receiver: $receiver_id,
+          hasPointInTime: $date
       }){
         commitment{
           id
@@ -235,6 +266,7 @@ const queries = {
           satisfies: $intent_id,
           satisfiedBy: $commitment_id,
           resourceQuantity: $quantity
+
         }){
         satisfaction{
           id
@@ -324,7 +356,14 @@ const queries = {
   filterSatisfactions: function (data, receiver, finished) {
     return data.filter(function (el) {
      return el.satisfiedBy.receiver.id == receiver &&
-         el.satisfies.finished == finished;
+          el.satisfies.finished == finished;
+      });
+  },
+  // TODO : Remove when filtering implement on backend
+  filterReports: function (data, receiver, finished) {
+    return data.filter(function (el) {
+     return el.receiver.id != receiver &&
+          el.finished == finished;
       });
   }
 }

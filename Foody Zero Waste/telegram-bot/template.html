@@ -1,0 +1,196 @@
+<style>
+    .invoice-box {
+        max-width: 800px;
+        margin: auto;
+        padding: 30px;
+        border: 1px solid #eee;
+        box-shadow: 0 0 10px rgba(0, 0, 0, .15);
+        font-size: 16px;
+        line-height: 24px;
+        font-family: 'Helvetica Neue', 'Helvetica', Helvetica, Arial, sans-serif;
+        color: #555;
+    }
+
+    .invoice-box table {
+        width: 100%;
+        line-height: inherit;
+        text-align: left;
+    }
+
+    .invoice-box table td {
+        padding: 5px;
+        vertical-align: top;
+    }
+
+    .invoice-box table tr td:nth-child(2) {
+        text-align: right;
+    }
+
+    .invoice-box table tr.top table td {
+        padding-bottom: 20px;
+    }
+
+    .invoice-box table tr.top table td.title {
+        font-size: 45px;
+        line-height: 45px;
+        color: #333;
+    }
+
+    .invoice-box table tr.information table td {
+        padding-bottom: 40px;
+    }
+
+    .invoice-box table tr.heading td {
+        background: #eee;
+        border-bottom: 1px solid #ddd;
+        font-weight: bold;
+    }
+
+    .invoice-box table tr.details td {
+        padding-bottom: 20px;
+    }
+
+    .invoice-box table tr.item td {
+        border-bottom: 1px solid #eee;
+    }
+
+    .invoice-box table tr.item.last td {
+        border-bottom: none;
+    }
+
+    .invoice-box table tr.total td:nth-child(2) {
+        font-weight: bold;
+    }
+
+    @media only screen and (max-width: 600px) {
+        .invoice-box table tr.top table td {
+            width: 100%;
+            display: block;
+            text-align: center;
+        }
+
+        .invoice-box table tr.information table td {
+            width: 100%;
+            display: block;
+            text-align: center;
+        }
+    }
+
+    /** RTL **/
+    .rtl {
+        direction: rtl;
+        font-family: Tahoma, 'Helvetica Neue', 'Helvetica', Helvetica, Arial, sans-serif;
+    }
+
+    .rtl table {
+        text-align: right;
+    }
+
+    .rtl table tr td:nth-child(2) {
+        text-align: left;
+    }
+</style>
+
+<div>
+    <div class="invoice-box">
+        <table cellpadding="0" cellspacing="0">
+            <tr class="top">
+                <td colspan="2">
+                    <table>
+                        <tr>
+                            <td class="title">
+                            </td>
+                            <td>
+                                Data: {{date}}<br>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <tr class="information">
+                <td colspan="2">
+                    <table>
+                        <tr>
+                            <td>
+                                RECUP APS<br>
+                                Via Urbano III, 3<br>
+                                20123, Milano (MI)<br>
+                                CF: 97759920156<br>
+                                ortomercato.recup@gmail.com
+                            </td>
+
+                            {{#if receiver}}
+                            <td>
+                                Croce Rossa Italiana<br>
+                                Comitato di San Donato Milanese OdV<br>
+
+                                Via Croce Rossa 6<br>
+                                20097, San Donato Milanese (MI)<br>
+                                PI/CF: 08468890960<br>
+                                SDI: KRRH6B9<br>
+                                sandonatomilanese@cri.it<br>
+                                cl.sandonatomilanese@cert.cri.it<br>
+                                02 5272 137
+                            </td>
+                            {{else}}
+                            <td>
+                                Croce Rossa Italiana<br>
+                                Comitato Dell’Area Sud Milanese<br>
+
+                                Via Giovanni Marcora 2<br>
+                                20090, Opera (MI)<br>
+                                PI/CF: 08486730966<br>
+                                SDI: 3ZJY534<br>
+                                areasudmilanese@cri.it<br>
+                                cl.areasudmilanese@cert.cri.it<br>
+                                02 5760 2152 
+                            </td>
+                            {{/if}}
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            <tr>
+            	<td></td>
+            	<td >Trasferimento beni a titolo gratuito</td>
+            	<td></td>
+            </tr>
+            <tr class="heading">
+                <td>
+                    Descrizione merce ritirata
+                </td>
+
+                <td>
+                    Quantità
+                </td>
+            </tr>
+
+            {{#each economicEventsFiltered}}
+            <tr class="item">
+                <td>
+                    {{resourceInventoriedAs.name}}
+                </td>            	
+                <td>
+                    {{resourceQuantity.hasNumericalValue}} {{resourceQuantity.hasUnit.symbol}}
+                </td>
+            </tr>
+            {{/each}}
+        </table>
+
+        <table>
+            <tr>
+                <td></td>
+                <td>
+                    {{#if img_r_src}}
+                        <img src="{{{img_r_src}}}" alt=""/>
+                    {{/if}}                    
+
+                </td>
+            </tr>
+        </table> 
+        <br><br>
+        <p style="text-align: justify; font-size: 12px; line-height: 14px;">Il presente documento non ha rilevanza fiscale in quanto il trasporto è effettuato nell'ambito dell'attitività istituzionale dell'Ente, che non ha fini di lucro e non svolge attività commerciale.</p>
+        
+    </div>
+</div>
