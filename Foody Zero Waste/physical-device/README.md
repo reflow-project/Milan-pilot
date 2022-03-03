@@ -1,11 +1,7 @@
 # Foody Zero Waste
 ## BOTTO IoT device
 
-**BOTTO** is an automated communication solution integrated with a tracking and redistribution system based on the blockchain network [ReflowOS](https://github.com/dyne/reflow-os) that facilitates the reallocation of surplus food.
-
-**BOTTO** is made of two main components:  
-- A physical **IoT device** designed for wholesalers, for quick and easy reporting of surpluses.  
-- A **Telegram bot**, written in NodeJS, running in dedicated channels to receive notifications of donations, manage the transfer of goods and keep track of all sorting operations, that can be found [here](https://github.com/reflow-project/Milan-pilot/tree/main/Foody%20Zero%20Waste/telegram-bot)
+![botto gif2](https://user-images.githubusercontent.com/642555/156587803-f04144c5-fbde-4d3d-ae92-95c38a7dd430.gif)
 
 ## Content
 
