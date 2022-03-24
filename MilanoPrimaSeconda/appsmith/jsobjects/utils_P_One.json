@@ -1,0 +1,15 @@
+{
+  "unpublishedCollection": {
+    "name": "utils",
+    "pageId": "P_One",
+    "pluginId": "js-plugin",
+    "pluginType": "JS",
+    "actions": [],
+    "archivedActions": [],
+    "body": "export default {\n\tisCurrentPage: (page) => {\n\t\tif(appsmith.store.page === page) return true;\n\t\treturn false;\n\t},\n\t\n\tsetCurrentPage: (page) => {\n\t\tstoreValue('page',page);\n\t\tnavigateTo(page)\n\t},\n\t/*\n\t\n\ttransformAPI: () => {\n\t\t{{spatialThings.data}}\n\t}\n\t*/\n\treload: () => {\n\t\tmyAgent.run(() => showAlert('MyAgent run!', 'success'), () => showAlert('My Agent not run','error') );\n\t\t//spatialThings.run(() => showAlert('SpacialThings run!', 'success'), () => showAlert('SpacialThings not run','error') )\n\t\t//https://www.youtube.com/watch?v=tpbY5Jti9d4&t=172s\n\t}\n}\n",
+    "variables": []
+  },
+  "id": "P_One_utils",
+  "deleted": false,
+  "gitSyncId": "61dd9b8a19ba421fdd1ccd95_61e2f570eb0501052b9fb92d"
+}

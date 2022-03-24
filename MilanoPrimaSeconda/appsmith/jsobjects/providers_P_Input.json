@@ -1,0 +1,49 @@
+{
+  "unpublishedCollection": {
+    "name": "providers",
+    "pageId": "P_Input",
+    "pluginId": "js-plugin",
+    "pluginType": "JS",
+    "actions": [],
+    "archivedActions": [],
+    "body": "export default {\n\tprovider: [\n\t{\n\t\t\"label\":\"La Ribalta\",\n\t\t\"value\":\"Ribalta\"\n\t\n\t},\n\t{\n\t\t\"label\":\"Varisco Bakery\",\n\t\t\"value\":\"Varisco\"\n\t\n\t},\n\n    {\n\t\t\"label\":\"Il Francesino Cafè\",\n\t\t\"value\":\"Francesino\"\n\t\n\t},\n\n    {\n\t\t\"label\":\"Da Cri \",\n\t\t\"value\":\"Cri\"\n\t\n\t},\n\n    {\n\t\t\"label\":\"Bazzini Panetteria \",\n\t\t\"value\":\"Bazzini\"\n\t\n\t},\n\n    {\n\t\t\"label\":\"Il Forno dei Mariani \",\n\t\t\"value\":\"Mariani\"\n\t\n\t},\n    \n    {\n\t\t\"label\":\"Voglia di Pane \",\n\t\t\"value\":\"Voglia\"\n\t\n\t}\n\t]\n}\n",
+    "variables": [
+      {
+        "name": "provider",
+        "value": [
+          {
+            "label": "La Ribalta",
+            "value": "Ribalta"
+          },
+          {
+            "label": "Varisco Bakery",
+            "value": "Varisco"
+          },
+          {
+            "label": "Il Francesino Cafè",
+            "value": "Francesino"
+          },
+          {
+            "label": "Da Cri ",
+            "value": "Cri"
+          },
+          {
+            "label": "Bazzini Panetteria ",
+            "value": "Bazzini"
+          },
+          {
+            "label": "Il Forno dei Mariani ",
+            "value": "Mariani"
+          },
+          {
+            "label": "Voglia di Pane ",
+            "value": "Voglia"
+          }
+        ]
+      }
+    ]
+  },
+  "id": "P_Input_providers",
+  "deleted": false,
+  "gitSyncId": "61dd9b8a19ba421fdd1ccd95_61e59fe8eb0501052b9fd183"
+}

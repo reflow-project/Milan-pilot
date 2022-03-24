@@ -1,0 +1,33 @@
+{
+  "unpublishedCollection": {
+    "name": "batch",
+    "pageId": "P_Input",
+    "pluginId": "js-plugin",
+    "pluginType": "JS",
+    "actions": [],
+    "archivedActions": [],
+    "body": "export default {\n\tbatch:[\n  {\n    \"label\": \"22Jan01\",\n    \"value\": \"22Jan01\"\n  },\n  {\n    \"label\": \"22Feb02\",\n    \"value\": \"22Feb02\"\n  },\n  {\n    \"label\": \"22Mar03\",\n    \"value\": \"22Mar03\"\n  }\n]\n}",
+    "variables": [
+      {
+        "name": "batch",
+        "value": [
+          {
+            "label": "22Jan01",
+            "value": "22Jan01"
+          },
+          {
+            "label": "22Feb02",
+            "value": "22Feb02"
+          },
+          {
+            "label": "22Mar03",
+            "value": "22Mar03"
+          }
+        ]
+      }
+    ]
+  },
+  "id": "P_Input_batch",
+  "deleted": false,
+  "gitSyncId": "61dd9b8a19ba421fdd1ccd95_61e5a318eb0501052b9fd1a7"
+}
